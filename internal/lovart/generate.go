@@ -135,6 +135,31 @@ func (c *Client) ListThreads(ctx context.Context) ([]Thread, error) {
 	return out.Data, nil
 }
 
+// CreateProject 创建一个项目。
+//
+// 上游要求生成任务必须带 project_id，而**新注册账号一个项目都没有**（网页端也是
+// 发第一条消息时才自动建）。所以账号池首次使用某个号时，这里兜底建一个。
+func (c *Client) CreateProject(ctx context.Context, name string) (string, error) {
+	if name == "" {
+		name = "lovart2api"
+	}
+	data, err := c.do(ctx, http.MethodPost, joinURL(c.WWWBase, "/api/canva/project/saveProject"),
+		map[string]any{"projectName": name}, false)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		ProjectID string `json:"projectId"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return "", fmt.Errorf("解析建项目响应失败: %w (raw=%s)", err, truncate(string(data), 200))
+	}
+	if out.ProjectID == "" {
+		return "", fmt.Errorf("建项目未返回 projectId (raw=%s)", truncate(string(data), 200))
+	}
+	return out.ProjectID, nil
+}
+
 // ResolveProjectID 找到一个可用的 project_id：优先项目列表，其次会话列表。
 //
 // 上游要求 project_id 必填，产物会落到该项目；账号第一次使用时通常至少有一个
@@ -154,7 +179,8 @@ func (c *Client) ResolveProjectID(ctx context.Context) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("账号下找不到任何项目，请先在网页端随便发一条消息创建一个项目")
+	// 新号没有任何项目 —— 直接建一个（实测 saveProject 可建）
+	return c.CreateProject(ctx, "lovart2api")
 }
 
 // Download 拉取产物字节（用于把结果转 base64 返回）。
