@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yuanjie-ai/lovart2api/internal/config"
@@ -27,6 +28,17 @@ type Server struct {
 	Log    *Logger
 
 	mux *http.ServeMux
+
+	// powerCache 缓存各账号的积分余额，面板刷新时不至于每次都打上游
+	powerMu    sync.Mutex
+	powerCache map[string]powerSnapshot
+}
+
+// powerSnapshot 一次积分查询结果（带时间戳做 TTL）。
+type powerSnapshot struct {
+	Power *lovart.Power
+	At    time.Time
+	Err   string
 }
 
 // serverStart 进程启动时间，面板展示 uptime 用。
@@ -38,8 +50,9 @@ func New(cfg *config.Config, p *pool.Pool, sg *sign.Signer) *Server {
 		Cfg:    cfg,
 		Pool:   p,
 		Signer: sg,
-		Log:    NewLogger(cfg.Logging.MaxEntries),
-		mux:    http.NewServeMux(),
+		Log:        NewLogger(cfg.Logging.MaxEntries),
+		mux:        http.NewServeMux(),
+		powerCache: map[string]powerSnapshot{},
 	}
 	s.routes()
 	return s

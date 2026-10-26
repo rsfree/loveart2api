@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yuanjie-ai/lovart2api/internal/lovart"
@@ -83,12 +84,51 @@ func (s *Server) panelOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// powerFor 查账号积分，带 60 秒缓存。
+func (s *Server) powerFor(id, token string) powerSnapshot {
+	s.powerMu.Lock()
+	snap, ok := s.powerCache[id]
+	s.powerMu.Unlock()
+	if ok && time.Since(snap.At) < 60*time.Second {
+		return snap
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	client := lovart.NewClient(token, s.Signer)
+	client.WWWBase = s.Cfg.Upstream.WWWBase
+	client.LGWBase = s.Cfg.Upstream.LGWBase
+	client.Lang = s.Cfg.Upstream.Lang
+	p, err := client.GetPower(ctx)
+	snap = powerSnapshot{Power: p, At: time.Now()}
+	if err != nil {
+		snap.Err = err.Error()
+	}
+	s.powerMu.Lock()
+	s.powerCache[id] = snap
+	s.powerMu.Unlock()
+	return snap
+}
+
 func (s *Server) panelAccounts(w http.ResponseWriter, r *http.Request) {
 	accs := s.Pool.List()
 	out := make([]map[string]any, 0, len(accs))
 	now := time.Now()
 	dailyLimit := s.Cfg.Pool.DailyLimit // 0 表示不本地拦，面板展示为「不限」
-	for _, a := range accs {
+	// 并发查积分，最慢一个决定响应时间
+	powers := make([]powerSnapshot, len(accs))
+	var wg sync.WaitGroup
+	for i := range accs {
+		if !accs[i].Enabled || accs[i].Token == "" {
+			continue
+		}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			powers[i] = s.powerFor(accs[i].ID, accs[i].Token)
+		}(i)
+	}
+	wg.Wait()
+	for idx, a := range accs {
 		cooling := a.Cooling(now)
 		var coolLeft int64
 		if cooling {
@@ -105,7 +145,17 @@ func (s *Server) panelAccounts(w http.ResponseWriter, r *http.Request) {
 				cooledModels = append(cooledModels, gen)
 			}
 		}
-		out = append(out, map[string]any{
+		// 积分
+		powerField := map[string]any{}
+		if p := powers[idx]; p.Power != nil {
+			powerField["power_paid"] = p.Power.Paid
+			powerField["power_free"] = p.Power.Free
+			powerField["power_daily"] = p.Power.DailyQuota
+		} else if p.Err != "" {
+			powerField["power_err"] = truncateStr(p.Err, 80)
+		}
+
+		row := map[string]any{
 			"id":            a.ID,
 			"email":         a.Email,
 			"uid":           a.UID,
@@ -122,7 +172,11 @@ func (s *Server) panelAccounts(w http.ResponseWriter, r *http.Request) {
 			"fail_count":    a.FailCount,
 			"last_used":     a.LastUsed,
 			"token_tail":    tail(a.Token, 6),
-		})
+		}
+		for k, v := range powerField {
+			row[k] = v
+		}
+		out = append(out, row)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"accounts": out})
 }

@@ -193,3 +193,41 @@ GET https://lgw.lovart.ai/v1/generator/tasks?task_id=<generator_task_id>
 | `POST /api/canva/agent/v1/generators/schemas` | 整份 OpenAPI（参数真源） |
 | `GET  /api/canva/agent/v1/generators/taskInfo?task_id=` | ⚠️ 实测恒返回 `500 服务异常2`，不要用 |
 | `POST /api/canva/agent/chat` | agent 对话（SSE，走 Service Worker，纯 HTTP 复现未取证） |
+
+## 10. 积分（Power）体系
+
+**积分和「核心模型 5 次/天」是两套独立限制**：积分是钱，次数是配额，有积分也绕不过配额。
+
+### 10.1 查询余额
+
+```
+GET /api/www/lovart/member/power/detail      → [{"amount":702,"type":3},{"amount":0,"type":4}]
+GET /api/www/lovart/member/free/power        → {"allocatedToday":70,"allocatedCount":0,...}
+```
+
+- `type:3` 付费/赠送池（长期），`type:4` 每日免费池（当日清零）。
+- `allocatedToday` 实测 = **70**，即每天登录送 70 分（流水里显示为 `Daily Login Bonus`）。
+- ⚠️ `/api/www/member/power/*` 和 `/api/www/power/*` 都是 404，正确前缀带 `lovart`。
+
+### 10.2 消费流水（最有用的成本依据）
+
+```
+GET /api/www/lovart/power/deductlogs?page=1&pageSize=60
+→ {"page":1,"total":55,"data":[{"deductTime","amount","deductSource":"AGENT","extInfo","details","refunded"}]}
+```
+
+`extInfo` 区分类型：`generator`（生成扣费）/ `Daily Login Bonus`（+70 入账）/
+`Daily Bonus Credits Expired`（过期扣回）/ `Plan Purchase`（套餐）。
+
+### 10.3 实测单价（2026-10-26）
+
+| 调用方式 | 单价 | 说明 |
+|---|---|---|
+| `flux-2-pro` / `flux-2-max` 直连 | **6 分/次** | 12 次记录全部是 6，最稳定 |
+| `nano-banana` 系图生图 | **7 分/次** | 两次独立记录都是 7 |
+| 网页 agent 对话（发一条 prompt） | **9~15 分/次** | agent 会做规划，比直连贵 1.5~2.5 倍 |
+| 批量提交（同一次结算） | 18 分 | = 3×6，按任务合并扣费 |
+
+> 扣费**异步结算**：任务完成才扣，且可能把多个任务合并成一条。
+> 所以「生成前后查余额」的测法不准，必须看 `deductlogs`。
+
