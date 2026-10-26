@@ -23,7 +23,9 @@ import (
 	"github.com/yuanjie-ai/lovart2api/internal/sign"
 )
 
-const appVersion = "0.1.0"
+// appVersion 由发版流水线通过 -X main.appVersion=<tag> 注入；
+// 必须是 var（ldflags -X 只对字符串变量生效，const 注入不进去）。
+var appVersion = "dev"
 
 func main() {
 	cfgPath := flag.String("config", "config.json", "配置文件路径")

@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # 打 tag / 建 Release
+  packages: write # 推 ghcr 镜像
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/rsfree/loveart2api
+  GO_VERSION: '1.25'
+
+jobs:
+  release:
+    # 逃生阀：commit message 含 [skip release] 时跳过（workflow_dispatch 不受限）。
+    # 注意：给这条规则写说明的提交自己也会命中，届时用 workflow_dispatch 补跑。
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip release]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # 分支 push 必须钉到 github.sha：github.ref 是移动的分支指针，
+          # 并发 push 时 tag 会打到后来的提交上。workflow_dispatch 也取当前 sha。
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Resolve next version
+        id: ver
+        run: |
+          set -euo pipefail
+          # 用 --sort=-v:refname（字典序会把 v1.9.0 判成新于 v1.10.0）
+          # glob 限死三段式，排除 latest 这类滚动指针
+          PREV=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1 || true)
+          BASE=${PREV:-v0.0.0}
+          CORE=${BASE#v}
+          CORE=${CORE%%[-+]*}          # 剥掉 v1.2.3-rc.1 这类后缀，否则算术报错
+          IFS=. read -r MA MI PA <<< "$CORE"
+          PA=${PA%%[-+]*}
+          NEW="v${MA}.${MI}.$((PA + 1))"
+          echo "prev=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "next=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "Previous: ${PREV:-<none>} -> Next: ${NEW}"
+
+      - name: Build changelog
+        id: log
+        run: |
+          set -euo pipefail
+          PREV='${{ steps.ver.outputs.prev }}'
+          if [ -z "$PREV" ]; then
+            RANGE=HEAD
+            LIMIT='--max-count=50'   # 首个 release 限长，避免把全历史塞进正文
+          else
+            RANGE="${PREV}..HEAD"
+            LIMIT=''
+          fi
+          {
+            echo '## Changes'
+            echo
+            # heredoc 写 $GITHUB_OUTPUT：单行 echo 会把多行内容截断成第一条
+            git log "$RANGE" $LIMIT --pretty='- %s (%h)' --no-merges || echo '- Initial release'
+          } > /tmp/notes.md
+          cat /tmp/notes.md
+
+      - name: Build cross-platform binaries into dist/
+        env:
+          VERSION: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            GOOS=${target%%/*}
+            GOARCH=${target##*/}
+            EXT=''
+            [ "$GOOS" = windows ] && EXT='.exe'
+            CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build \
+              -trimpath -ldflags "-s -w -X main.appVersion=${VERSION}" \
+              -o "dist/lovart2api-${GOOS}-${GOARCH}${EXT}" ./cmd/server
+          done
+
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
+          [ -n "$(ls -A dist)" ] || { echo "::error::dist/ is empty"; exit 1; }
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -la dist
+          # 版本号真的注进去了（ldflags 打偏的话这里会显示 dev）
+          ./dist/lovart2api-linux-amd64 -version
+
+      - name: Build container image
+        env:
+          VERSION: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg VERSION="$VERSION" \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:sha-${{ steps.ver.outputs.short }}" \
+            .
+
+      # 冒烟放在 push 之前：镜像在本地就能跑，不过关 GHCR 永远不会见到坏镜像
+      - name: Smoke test image
+        env:
+          VERSION: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/smoke.json <<'JSON'
+          {"listen":":7864","api_key":"sk-smoke","state_file":"/app/data/state.json","panel":{"auth":""}}
+          JSON
+          docker run -d --name smoke -p 17864:7864 \
+            -v /tmp/smoke.json:/app/config.json:ro "$IMAGE:$VERSION"
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:17864/healthz >/tmp/health.json 2>/dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          echo "--- healthz ---"; cat /tmp/health.json 2>/dev/null || true
+          echo "--- logs ---"; docker logs smoke 2>&1 | tail -20
+          if [ "$ok" != 1 ]; then echo "::error::容器 30s 内没起来"; docker rm -f smoke; exit 1; fi
+          # 成对断言：无口令的受保护端点必须被拒（401），证明鉴权真的接线
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"flux-2-pro","prompt":"x"}' \
+            http://127.0.0.1:17864/v1/images/generations)
+          echo "no-key generations -> $code"
+          [ "$code" = "401" ] || { echo "::error::无 key 请求应 401，实际 $code"; docker rm -f smoke; exit 1; }
+          docker rm -f smoke
+
+      - name: Push image to GHCR
+        id: push
+        env:
+          VERSION: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for t in "$VERSION" latest "sha-${{ steps.ver.outputs.short }}"; do
+            docker push "$IMAGE:$t"
+          done
+
+      - name: Verify image digests match
+        env:
+          VERSION: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          REPO='rsfree/loveart2api'
+          TOK=$(curl -fsS "https://ghcr.io/token?scope=repository:${REPO}:pull&service=ghcr.io" \
+                | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
+          for t in "$VERSION" latest "sha-${{ steps.ver.outputs.short }}"; do
+            D=$(curl -fsSI -H "Authorization: Bearer $TOK" \
+                 -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json' \
+                 "https://ghcr.io/v2/${REPO}/manifests/${t}" \
+                 | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}')
+            echo "$t -> ${D:-<empty>}"
+            [ -n "$D" ] || { echo "::error::读不到 $t 的 digest"; exit 1; }
+            echo "$D" >> /tmp/digests.txt
+          done
+          [ "$(sort -u /tmp/digests.txt | wc -l | tr -d ' ')" = "1" ] \
+            || { echo "::error::三个 tag 的 digest 不一致"; exit 1; }
+          echo "digest 一致：$(head -1 /tmp/digests.txt)"
+
+      - name: Create tag
+        run: |
+          set -euo pipefail
+          # runner 上没有全局 git 配置，annotated tag 会因缺 committer 身份 128 退出
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -a '${{ steps.ver.outputs.next }}' -m 'Release ${{ steps.ver.outputs.next }}'
+          git push origin '${{ steps.ver.outputs.next }}'
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "$VERSION 的 Release 已存在，跳过（幂等）"
+            exit 0
+          fi
+          gh release create "$VERSION" \
+            --title "Release $VERSION" \
+            --notes-file /tmp/notes.md \
+            dist/*
+
+      - name: Move latest tag
+        run: |
+          set -euo pipefail
+          git tag -f latest '${{ steps.ver.outputs.next }}'
+          git push -f origin latest
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ steps.ver.outputs.next }}
+          path: dist/
+          retention-days: 30
