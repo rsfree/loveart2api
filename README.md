@@ -42,7 +42,7 @@ Nano Banana Pro、GPT Image、Flux 2、Seedream 等模型做文生图和图生�
 | ❄️ **分级冷却** | 额度 → **只冷却该模型**到日切（核心模型满了 flux 照用）；鉴权 → 整号禁用；并发 → 3s；参数错误 → 不冷却（是请求的问题，不是账号的问题） |
 | 🔐 **wasm 签名** | 上游用 WebAssembly 算 `X-Client-Signature`，本项目用 wazero 直接跑同一份 wasm，不复刻算法 |
 | 📐 **比例兜底** | 任意 `size` 折算到最近的支持比例（`1792x1024` → `16:9`），避免「任务创建成功但执行失败」白烧额度 |
-| 🖥 **Web 面板** | 账号增删改测、额度与冷却、请求日志、在线探测 |
+| 🖥 **Web 面板** | 账号增删改测、**批量导入**、积分余额、额度与冷却、请求日志 |
 | 📦 **单二进制** | 无 CGO、无外部依赖，wasm 与面板都内嵌 |
 
 ## 快速开始
@@ -92,6 +92,7 @@ print(img.data[0].url)
 | `GET /healthz` | 健康检查（含可用账号数） |
 | `GET /v1/usage` | 账号池用量 |
 | `GET /panel` | Web 面板 |
+| `POST /panel/api/accounts/bulk` | 批量导入 usertoken（多行文本 / 逗号 / 数组），并发 4 路校验并顺带探测 project_id |
 
 通用参数：
 
@@ -198,6 +199,30 @@ docker run -d --name lovart2api -p 7864:7864 \
 | `images.download_result` | `true` 时一律回 `b64_json`（网关代下产物，客户端少一次跨境请求） |
 | `pool.max_retries` | 一次请求最多换几个账号 |
 | `pool.max_concurrency_per_account` | 上游实测为 1，别改大 |
+
+## 扩容：多账号
+
+单账号核心额度是 5 次/天（全球免费档政策，不随出口 IP 变化——实测美国出口与香港出口返回完全一致的
+`region=CN / location=HK`）。所以产能只能靠账号数堆。
+
+账号来源：网页端用**真实邮箱**注册（`mail.xiuvi.cn` 这类临时邮箱域名已被上游拉黑，
+返回 `This email provider is not allowed`；且发码前有阿里云验证码挑战，纯 HTTP 过不去）。
+
+拿到 `usertoken` 后两条路导入：
+
+```bash
+# 单个
+curl -X POST http://127.0.0.1:7864/panel/api/accounts \
+  -H 'Content-Type: application/json' -d '{"token":"<usertoken>"}'
+
+# 批量（面板上也有输入框；支持换行/逗号/JSON 数组）
+curl -X POST http://127.0.0.1:7864/panel/api/accounts/bulk \
+  -H 'Content-Type: application/json' \
+  -d '{"tokens":"tok1\ntok2\ntok3"}'
+```
+
+批量导入会并发 4 路逐个校验（拉模型目录验证 token 有效），并顺带探测每个号的 `project_id`，
+返回逐条结果。重复 token 幂等（`created=false`），失效 token 单独报错不阻塞其他。
 
 ## 已知限制
 

@@ -114,6 +114,18 @@
       </div>
       <div id="addMsg"></div>
       <div class="hint">添加账号时会自动校验 token 并探测 project_id。token 只保存在服务端状态文件，不会回显。</div>
+
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--dim)">批量导入（每行一个 usertoken，也接受逗号/数组）</summary>
+        <div style="margin-top:10px">
+          <textarea id="bulkTokens" rows="5" placeholder="usertoken 1&#10;usertoken 2&#10;…"></textarea>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+            <button class="primary" onclick="bulkAdd()">批量导入</button>
+            <span class="sub" id="bulkHint">并发 4 路校验，每个号会顺带探测 project_id</span>
+          </div>
+          <div id="bulkMsg"></div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -250,6 +262,26 @@ async function addAccount() {
     const r = await api('/panel/api/accounts', { method: 'POST', body: JSON.stringify({ token, email }) });
     box.innerHTML = `<div class="ok">${r.created ? '已添加' : '已更新'}账号 ${r.id}${r.project_id ? '，project ' + r.project_id : ''}</div>`;
     document.getElementById('token').value = '';
+    refreshAll();
+  } catch (e) {
+    box.innerHTML = `<div class="err">${e.message}</div>`;
+  }
+}
+
+async function bulkAdd() {
+  const raw = document.getElementById('bulkTokens').value.trim();
+  const box = document.getElementById('bulkMsg');
+  if (!raw) { box.innerHTML = '<div class="err">先粘贴 token</div>'; return; }
+  box.innerHTML = '<div class="hint">校验中，账号多时需要一会儿…</div>';
+  try {
+    const r = await api('/panel/api/accounts/bulk', { method: 'POST', body: JSON.stringify({ tokens: raw }) });
+    const failed = (r.results || []).filter(x => !x.ok);
+    let html = `<div class="ok">成功 ${r.added} 个，失败 ${r.failed} 个（共 ${r.total}）</div>`;
+    if (failed.length) {
+      html += '<div class="err">' + failed.map(x => `${x.token_tail}: ${x.error || '未知错误'}`).join('<br>') + '</div>';
+    }
+    box.innerHTML = html;
+    if (r.added > 0) document.getElementById('bulkTokens').value = '';
     refreshAll();
   } catch (e) {
     box.innerHTML = `<div class="err">${e.message}</div>`;

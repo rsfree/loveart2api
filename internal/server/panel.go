@@ -32,6 +32,7 @@ func (s *Server) panelRoutes() {
 	s.mux.HandleFunc("GET /panel/api/overview", s.guardPanel(s.panelOverview))
 	s.mux.HandleFunc("GET /panel/api/accounts", s.guardPanel(s.panelAccounts))
 	s.mux.HandleFunc("POST /panel/api/accounts", s.guardPanel(s.panelAddAccount))
+	s.mux.HandleFunc("POST /panel/api/accounts/bulk", s.guardPanel(s.panelBulkAccounts))
 	s.mux.HandleFunc("DELETE /panel/api/accounts/{id}", s.guardPanel(s.panelDeleteAccount))
 	s.mux.HandleFunc("POST /panel/api/accounts/{id}/toggle", s.guardPanel(s.panelToggleAccount))
 	s.mux.HandleFunc("POST /panel/api/accounts/{id}/probe", s.guardPanel(s.panelProbeAccount))
