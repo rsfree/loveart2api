@@ -19,3 +19,6 @@ config.json
 # Go
 *.test
 *.out
+
+# 工作记忆：含内部节点/凭据细节，绝不入库
+.workbuddy/
