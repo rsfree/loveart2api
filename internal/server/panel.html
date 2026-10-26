@@ -210,7 +210,7 @@ async function refreshAccounts() {
       : `${a.usage_today ?? 0}/${lim > 0 ? lim : '不限'}`;
     const cooling = a.cooldown_sec > 0;
     return `<tr>
-      <td><div class="mono">${a.id}</div><div class="sub">${a.email || ''} ${a.uid ? '· uid ' + a.uid : ''}</div><div class="sub mono">token ${a.token_tail || ''}</div></td>
+      <td><div class="mono">${a.id}</div><div class="sub">${a.email || ''} ${a.uid ? '· uid ' + a.uid : ''}</div><div class="sub mono">token ${a.token_tail || ''}${a.token_expire_in ? ' · ' + a.token_expire_in : ''}${a.has_refresh ? '' : ' · 无RT'}</div></td>
       <td>${st}${cooledTip}</td>
       <td class="mono">${usage}</td>
       <td class="mono">${powerCell(a)}</td>

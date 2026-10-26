@@ -92,7 +92,7 @@ print(img.data[0].url)
 | `GET /healthz` | 健康检查（含可用账号数） |
 | `GET /v1/usage` | 账号池用量 |
 | `GET /panel` | Web 面板 |
-| `POST /panel/api/accounts/bulk` | 批量导入 usertoken（多行文本 / 逗号 / 数组），并发 4 路校验并顺带探测 project_id |
+| `POST /panel/api/accounts/bulk` | 批量导入 usertoken（多行 / 逗号 / 数组）；支持 `accessToken::refreshToken` 形式 |
 
 通用参数：
 
@@ -199,6 +199,26 @@ docker run -d --name lovart2api -p 7864:7864 \
 | `images.download_result` | `true` 时一律回 `b64_json`（网关代下产物，客户端少一次跨境请求） |
 | `pool.max_retries` | 一次请求最多换几个账号 |
 | `pool.max_concurrency_per_account` | 上游实测为 1，别改大 |
+
+## Token 保活（自动续期）
+
+`accessToken` 只有 **7 天**有效期，`refreshToken` 约 90 天，且**每次刷新都会轮换**。
+网关内置续期，不需要手工重登：
+
+- 后台每 6 小时扫一遍，剩余不足 2 天才真正刷新（刷太勤没必要，每次刷新都消耗一次轮换机会）
+- 刷新成功会把新 accessToken + 新 refreshToken 一起写回状态文件
+- 面板可手动刷：`POST /panel/api/accounts/{id}/refresh`、`POST /panel/api/accounts/refresh`
+- 账号按 **userId**（JWT 里的 `userId`）收敛，不会因为 token 轮换而"越刷越多号"
+
+🔴 要续期**必须有 refreshToken**。只有 accessToken 的号 7 天后必然失效，只能重新登录。
+批量导入时用 `accessToken::refreshToken` 格式带上，否则面板会标 `无RT`。
+
+```bash
+# 带 RT 导入
+curl -X POST http://127.0.0.1:7864/panel/api/accounts/bulk \
+  -H 'Content-Type: application/json' \
+  -d '{"tokens":"<accessToken>::<refreshToken>"}'
+```
 
 ## 扩容：多账号
 

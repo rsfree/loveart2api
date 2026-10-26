@@ -31,6 +31,13 @@ type Account struct {
 	ProjectID string `json:"project_id,omitempty"`
 	// KitID 素材库；首次上传时创建并写回，避免每次上传都建新库。
 	KitID string `json:"kit_id,omitempty"`
+	// RefreshToken 用于续期 accessToken（有效期 7 天）。
+	// 🔴 每次刷新上游都会轮换它，必须把新值写回，否则下次刷新失败。
+	RefreshToken string `json:"refresh_token,omitempty"`
+	// TokenExpireAt accessToken 的过期时间（unix 秒），由 JWT 的 exp 解析而来。
+	TokenExpireAt int64 `json:"token_expire_at,omitempty"`
+	// LastRefreshAt 最近一次成功续期的时间，便于面板判断"多久没刷了"。
+	LastRefreshAt int64 `json:"last_refresh_at,omitempty"`
 
 	Enabled bool `json:"enabled"`
 
@@ -263,6 +270,34 @@ func (p *Pool) SetEnabled(id string, on bool) error {
 }
 
 // Update 用回调修改账号并落盘（面板改 project_id / kit_id 用）。
+// FindByUID 按上游 userId 找账号（token 会轮换，userId 不会）。
+func (p *Pool) FindByUID(uid int64) *Account {
+	if uid == 0 {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, a := range p.accounts {
+		if a.UID == uid {
+			cp := *a
+			return &cp
+		}
+	}
+	return nil
+}
+
+// Get 按 ID 取账号快照（副本；要改请走 Update）。
+func (p *Pool) Get(id string) *Account {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	a := p.findLocked(id)
+	if a == nil {
+		return nil
+	}
+	cp := *a
+	return &cp
+}
+
 func (p *Pool) Update(id string, fn func(*Account)) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

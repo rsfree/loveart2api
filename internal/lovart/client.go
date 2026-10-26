@@ -196,7 +196,14 @@ func newReqUUID() string {
 }
 
 // do 发一个上游请求。signed=true 时补 lgw 需要的三个头。
-func (c *Client) do(ctx context.Context, method, rawURL string, body any, signed bool) (json.RawMessage, error) {
+// reqOpt 给单次请求加自定义头（目前只用于 refresh 的指纹头）。
+type reqOpt func(*http.Request)
+
+func withHeader(k, v string) reqOpt {
+	return func(r *http.Request) { r.Header.Set(k, v) }
+}
+
+func (c *Client) do(ctx context.Context, method, rawURL string, body any, signed bool, opts ...reqOpt) (json.RawMessage, error) {
 	var rdr io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -219,6 +226,9 @@ func (c *Client) do(ctx context.Context, method, rawURL string, body any, signed
 	}
 	if c.Token != "" {
 		req.Header.Set("token", c.Token)
+	}
+	for _, opt := range opts {
+		opt(req)
 	}
 	if signed {
 		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)

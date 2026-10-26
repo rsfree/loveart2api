@@ -33,6 +33,8 @@ func (s *Server) panelRoutes() {
 	s.mux.HandleFunc("GET /panel/api/accounts", s.guardPanel(s.panelAccounts))
 	s.mux.HandleFunc("POST /panel/api/accounts", s.guardPanel(s.panelAddAccount))
 	s.mux.HandleFunc("POST /panel/api/accounts/bulk", s.guardPanel(s.panelBulkAccounts))
+	s.mux.HandleFunc("POST /panel/api/accounts/refresh", s.guardPanel(s.panelRefreshAll))
+	s.mux.HandleFunc("POST /panel/api/accounts/{id}/refresh", s.guardPanel(s.panelRefreshAccount))
 	s.mux.HandleFunc("DELETE /panel/api/accounts/{id}", s.guardPanel(s.panelDeleteAccount))
 	s.mux.HandleFunc("POST /panel/api/accounts/{id}/toggle", s.guardPanel(s.panelToggleAccount))
 	s.mux.HandleFunc("POST /panel/api/accounts/{id}/probe", s.guardPanel(s.panelProbeAccount))
@@ -174,6 +176,9 @@ func (s *Server) panelAccounts(w http.ResponseWriter, r *http.Request) {
 			"fail_count":    a.FailCount,
 			"last_used":     a.LastUsed,
 			"token_tail":    tail(a.Token, 6),
+			"token_expire_at": a.TokenExpireAt,
+			"token_expire_in": humanizeUntil(a.TokenExpireAt),
+			"has_refresh":   a.RefreshToken != "",
 		}
 		for k, v := range powerField {
 			row[k] = v

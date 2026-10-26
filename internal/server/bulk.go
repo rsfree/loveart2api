@@ -66,11 +66,16 @@ func (s *Server) panelBulkAccounts(w http.ResponseWriter, r *http.Request) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			item := bulkItem{TokenTail: tail(tok, 6)}
+			// 允许 "accessToken::refreshToken" 形式，带 RT 才能自动续期
+			access, refresh := tok, ""
+			if idx := strings.Index(tok, "::"); idx > 0 {
+				access, refresh = tok[:idx], tok[idx+2:]
+			}
+			item := bulkItem{TokenTail: tail(access, 6)}
 			ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 			defer cancel()
 
-			client := lovart.NewClient(tok, s.Signer)
+			client := lovart.NewClient(access, s.Signer)
 			client.WWWBase = s.Cfg.Upstream.WWWBase
 			client.LGWBase = s.Cfg.Upstream.LGWBase
 			client.Lang = s.Cfg.Upstream.Lang
@@ -81,15 +86,40 @@ func (s *Server) panelBulkAccounts(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			pid, _ := client.ResolveProjectID(ctx)
-			acct, created, err := s.Pool.Add(tok, "", 0)
-			if err != nil {
-				item.Error = err.Error()
-				results[i] = item
-				return
+			// 按 userId 收敛：refresh 会轮换 token，若按 token 去重就会每刷新一次
+			// 多出一个"新账号"（同一人的重复记录）。
+			uid := lovart.TokenUserID(access)
+			created := false
+			var acct *pool.Account
+			if uid != 0 {
+				if exist := s.Pool.FindByUID(uid); exist != nil {
+					_ = s.Pool.Update(exist.ID, func(a *pool.Account) {
+						a.Token = access
+						a.Enabled = true
+					})
+					acct = exist
+				}
 			}
-			if pid != "" {
-				_ = s.Pool.Update(acct.ID, func(a *pool.Account) { a.ProjectID = pid })
+			if acct == nil {
+				var err error
+				acct, created, err = s.Pool.Add(access, "", uid)
+				if err != nil {
+					item.Error = err.Error()
+					results[i] = item
+					return
+				}
 			}
+			_ = s.Pool.Update(acct.ID, func(a *pool.Account) {
+				if pid != "" {
+					a.ProjectID = pid
+				}
+				if refresh != "" {
+					a.RefreshToken = refresh
+				}
+				if exp := lovart.TokenExpiry(access); !exp.IsZero() {
+					a.TokenExpireAt = exp.Unix()
+				}
+			})
 			item.OK, item.Created, item.AccountID, item.ProjectID = true, created, acct.ID, pid
 			results[i] = item
 		}(i, tok)

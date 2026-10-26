@@ -75,6 +75,7 @@ func main() {
 	}
 
 	srv := server.New(cfg, p, sg)
+	srv.StartBackground(ctx)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Listen,
