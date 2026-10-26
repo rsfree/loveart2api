@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lovart2api · 面板</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --line: #e6e8ec;
+    --text: #14161a;
+    --dim: #6b7280;
+    --accent: #1f6feb;
+    --ok: #1a7f45;
+    --warn: #b45309;
+    --bad: #b42318;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 13px; }
+  .spacer { flex: 1; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfd; }
+  .stat .k { color: var(--dim); font-size: 12px; }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); }
+  .tag.ok { color: var(--ok); border-color: #bfe3cc; background: #f2fbf5; }
+  .tag.cool { color: var(--warn); border-color: #f3dcbd; background: #fdf8f0; }
+  .tag.off { color: var(--dim); background: #f3f4f6; }
+  .tag.bad { color: var(--bad); border-color: #f3c9c4; background: #fdf3f2; }
+  button {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff; color: var(--text); cursor: pointer;
+  }
+  button:hover { background: #f3f4f6; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.06); }
+  button.danger { color: var(--bad); }
+  textarea, input[type=text] {
+    width: 100%; font: inherit; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcfd; resize: vertical;
+  }
+  textarea:focus, input:focus { outline: 2px solid #cfe0ff; border-color: #9cc0ff; }
+  .row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .row > * { flex: 1 1 260px; }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .err { color: var(--bad); font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
+  .ok { color: var(--ok); font-size: 12px; margin-top: 8px; }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+  .empty { color: var(--dim); padding: 18px 0; text-align: center; }
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .scroll { max-height: 420px; overflow: auto; }
+  .nowrap { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>lovart2api</h1>
+    <span class="sub" id="uptime">加载中…</span>
+    <span class="spacer"></span>
+    <div class="toolbar">
+      <button onclick="refreshAll()">刷新</button>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>概览</h2>
+    <div class="stats" id="stats"></div>
+    <div class="hint" id="cfgline"></div>
+  </div>
+
+  <div class="card">
+    <h2>账号池</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>账号</th><th>状态</th><th>今日</th><th>项目 / 素材库</th>
+            <th>成功 / 失败</th><th>最近错误</th><th class="nowrap">操作</th>
+          </tr>
+        </thead>
+        <tbody id="accounts"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px">
+      <div class="row">
+        <div>
+          <div class="sub" style="margin-bottom:6px">粘贴 cookie <code>usertoken</code> 的值（不是 liblibai_userinfo 里的 token）</div>
+          <textarea id="token" rows="3" placeholder="usertoken…"></textarea>
+        </div>
+        <div>
+          <div class="sub" style="margin-bottom:6px">备注（可选，便于区分账号）</div>
+          <input type="text" id="email" placeholder="name@example.com">
+          <div style="margin-top:10px"><button class="primary" onclick="addAccount()">添加账号</button></div>
+        </div>
+      </div>
+      <div id="addMsg"></div>
+      <div class="hint">添加账号时会自动校验 token 并探测 project_id。token 只保存在服务端状态文件，不会回显。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>请求日志 <span class="sub" id="logCount"></span></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>时间</th><th>模型</th><th>账号</th><th>状态</th><th>耗时</th><th>图数</th><th>来源</th><th>错误</th></tr></thead>
+        <tbody id="logs"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const key = new URLSearchParams(location.search).get('key') || '';
+const H = key ? {'X-Panel-Key': key} : {};
+
+async function api(path, opt = {}) {
+  const r = await fetch(path, { ...opt, headers: { ...H, 'Content-Type': 'application/json', ...(opt.headers || {}) } });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error(t.slice(0, 200)); }
+  if (!r.ok) throw new Error(j?.error?.message || t.slice(0, 200));
+  return j;
+}
+
+function fmtTs(sec) {
+  if (!sec) return '—';
+  const d = new Date(sec * 1000);
+  return d.toLocaleString('zh-CN', { hour12: false });
+}
+
+function fmtDur(sec) {
+  if (sec <= 0) return '—';
+  if (sec < 60) return sec + 's';
+  if (sec < 3600) return Math.round(sec / 60) + 'm';
+  return (sec / 3600).toFixed(1) + 'h';
+}
+
+async function refreshOverview() {
+  const o = await api('/panel/api/overview');
+  document.getElementById('uptime').textContent = '运行 ' + o.uptime;
+  const a = o.accounts || {};
+  document.getElementById('stats').innerHTML = [
+    ['账号总数', a.total ?? 0],
+    ['可用', a.available ?? 0],
+    ['冷却中', a.cooling ?? 0],
+    ['今日已用', a.usage_sum ?? 0],
+    ['累计请求', o.requests ?? 0],
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  const c = o.config || {};
+  document.getElementById('cfgline').innerHTML =
+    `上游 <code>${c.www_base || ''}</code> · 网关 <code>${c.lgw_base || ''}</code> · 默认模型 <code>${c.default || ''}</code> / 编辑 <code>${c.default_edit || ''}</code>`;
+}
+
+async function refreshAccounts() {
+  const d = await api('/panel/api/accounts');
+  const rows = (d.accounts || []).map(a => {
+    let st;
+    if (!a.enabled) st = '<span class="tag off">已停用</span>';
+    else if (a.cooldown_sec > 0) st = `<span class="tag cool">冷却 ${fmtDur(a.cooldown_sec)}</span>`;
+    else if ((a.cooled_models || []).length) st = `<span class="tag cool">部分模型冷却</span>`;
+    else st = '<span class="tag ok">可用</span>';
+    const cooledTip = (a.cooled_models || []).length
+      ? `<div class="sub" style="font-size:11px" title="${a.cooled_models.join(', ')}">额度满：${a.cooled_models.map(m => m.split('/').pop()).join(',')}</div>` : '';
+    const lim = a.daily_limit || 0;
+    const usage = a.quota_hit
+      ? `<span class="tag bad">${a.usage_today}/${lim} 满</span>`
+      : `${a.usage_today ?? 0}/${lim > 0 ? lim : '不限'}`;
+    const cooling = a.cooldown_sec > 0;
+    return `<tr>
+      <td><div class="mono">${a.id}</div><div class="sub">${a.email || ''} ${a.uid ? '· uid ' + a.uid : ''}</div><div class="sub mono">token ${a.token_tail || ''}</div></td>
+      <td>${st}${cooledTip}</td>
+      <td class="mono">${usage}</td>
+      <td class="mono" style="font-size:11px">${a.project_id || '<span class="sub">待探测</span>'}<br>${a.kit_id || '<span class="sub">未创建</span>'}</td>
+      <td class="mono">${a.success_count || 0} / ${a.fail_count || 0}</td>
+      <td class="sub" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(a.last_error || '').replace(/"/g, '&quot;')}">${a.last_error || '—'}</td>
+      <td class="nowrap">
+        ${cooling ? `<button onclick="toggle('${a.id}', true)">解除冷却</button>` : `<button onclick="toggle('${a.id}', ${!a.enabled})">${a.enabled ? '停用' : '启用'}</button>`}
+        <button onclick="probe('${a.id}')">测试</button>
+        <button class="danger" onclick="del('${a.id}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('accounts').innerHTML = rows || '<tr><td colspan="7" class="empty">还没有账号，先在下面添加一个 usertoken</td></tr>';
+}
+
+async function refreshLogs() {
+  const d = await api('/panel/api/logs?limit=120');
+  document.getElementById('logCount').textContent = '累计 ' + (d.total || 0);
+  const rows = (d.logs || []).map(l => {
+    const ok = l.status >= 200 && l.status < 300;
+    return `<tr>
+      <td class="nowrap mono" style="font-size:11px">${new Date(l.time).toLocaleTimeString('zh-CN', { hour12: false })}</td>
+      <td>${l.model || '—'}</td>
+      <td class="mono" style="font-size:11px">${l.account || '—'}</td>
+      <td><span class="tag ${ok ? 'ok' : 'bad'}">${l.status || '—'}</span></td>
+      <td class="mono">${l.ms}ms</td>
+      <td class="mono">${l.images || ''}</td>
+      <td class="sub mono" style="font-size:11px">${l.remote_ip || ''}</td>
+      <td class="sub" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(l.error || '').replace(/"/g, '&quot;')}">${l.error || ''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('logs').innerHTML = rows || '<tr><td colspan="8" class="empty">暂无请求</td></tr>';
+}
+
+async function refreshAll() {
+  try { await refreshOverview(); } catch (e) { console.warn(e); }
+  try { await refreshAccounts(); } catch (e) { console.warn(e); }
+  try { await refreshLogs(); } catch (e) { console.warn(e); }
+}
+
+async function addAccount() {
+  const token = document.getElementById('token').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const box = document.getElementById('addMsg');
+  if (!token) { box.innerHTML = '<div class="err">先粘贴 usertoken</div>'; return; }
+  box.innerHTML = '<div class="hint">校验中…</div>';
+  try {
+    const r = await api('/panel/api/accounts', { method: 'POST', body: JSON.stringify({ token, email }) });
+    box.innerHTML = `<div class="ok">${r.created ? '已添加' : '已更新'}账号 ${r.id}${r.project_id ? '，project ' + r.project_id : ''}</div>`;
+    document.getElementById('token').value = '';
+    refreshAll();
+  } catch (e) {
+    box.innerHTML = `<div class="err">${e.message}</div>`;
+  }
+}
+
+async function probe(id) {
+  try {
+    const r = await api(`/panel/api/accounts/${id}/probe`, { method: 'POST' });
+    if (r.ok) alert(`可用：${r.generators} 个模型，project ${r.project_id}`);
+    else alert('不可用：' + r.error);
+  } catch (e) { alert(e.message); }
+  refreshAll();
+}
+
+async function toggle(id, enabled) {
+  try { await api(`/panel/api/accounts/${id}/toggle`, { method: 'POST', body: JSON.stringify({ enabled }) }); }
+  catch (e) { alert(e.message); }
+  refreshAll();
+}
+
+async function del(id) {
+  if (!confirm('删除账号 ' + id + '？')) return;
+  try { await api(`/panel/api/accounts/${id}`, { method: 'DELETE' }); }
+  catch (e) { alert(e.message); }
+  refreshAll();
+}
+
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# 二进制与构建产物
+/lovart2api
+/lovart2api-*
+/probe
+/server
+*.exe
+
+# 运行时数据：账号 token 就在里面，绝不入库
+/data/
+config.json
+*.log
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Go
+*.test
+*.out

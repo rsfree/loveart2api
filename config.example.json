@@ -1,0 +1,202 @@
+{
+  "listen": ":7864",
+  "api_key": "sk-lovart",
+  "state_file": "./data/state.json",
+  "upstream": {
+    "www_base": "https://www.lovart.ai",
+    "lgw_base": "https://lgw.lovart.ai",
+    "lang": "zh"
+  },
+  "images": {
+    "default_model": "nano-banana-pro",
+    "default_edit_model": "nano-banana-pro",
+    "poll_interval": "1200ms",
+    "poll_max": "5s",
+    "timeout": "15m",
+    "download_result": false
+  },
+  "pool": {
+    "max_concurrency_per_account": 1,
+    "quota_cooldown": "6h",
+    "error_cooldown": "90s",
+    "max_retries": 3,
+    "daily_limit": 0
+  },
+  "panel": {
+    "auth": ""
+  },
+  "logging": {
+    "enabled": true,
+    "max_entries": 2000,
+    "retention_hours": 72
+  },
+  "models": {
+    "flux-2-max": {
+      "generator": "fal/flux-2-max",
+      "display": "Flux 2 Max",
+      "type": "image",
+      "image_field": "image_list",
+      "single_image": false,
+      "supports_edit": true,
+      "resolutions": [
+        "1K",
+        "2K"
+      ],
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "3:2",
+        "1:1",
+        "2:3",
+        "3:4",
+        "9:16",
+        "9:21"
+      ]
+    },
+    "flux-2-pro": {
+      "generator": "fal/flux-2-pro",
+      "display": "Flux 2 Pro",
+      "type": "image",
+      "image_field": "image_list",
+      "single_image": false,
+      "supports_edit": true,
+      "resolutions": [
+        "1K",
+        "2K"
+      ],
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "3:2",
+        "1:1",
+        "2:3",
+        "3:4",
+        "9:16",
+        "9:21"
+      ]
+    },
+    "gpt-image-1": {
+      "generator": "openai/gpt-image-1",
+      "display": "GPT Image",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true
+    },
+    "gpt-image-1.5": {
+      "generator": "openai/gpt-image-1-5",
+      "display": "GPT Image 1.5",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true
+    },
+    "ideogram-v3": {
+      "generator": "ideogram/ideogram-v3",
+      "display": "Ideogram",
+      "type": "image",
+      "image_field": "image",
+      "single_image": true,
+      "supports_edit": true
+    },
+    "midjourney": {
+      "generator": "youchuan/midjourney",
+      "display": "Midjourney",
+      "type": "image",
+      "image_field": "image_url",
+      "single_image": true,
+      "supports_edit": true,
+      "aspect_ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "2:3",
+        "3:2"
+      ]
+    },
+    "nano-banana": {
+      "generator": "vertex/nano-banana",
+      "display": "Nano Banana",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true,
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "3:2",
+        "1:1",
+        "9:16",
+        "3:4",
+        "2:3",
+        "5:4",
+        "4:5"
+      ]
+    },
+    "nano-banana-pro": {
+      "generator": "vertex/anon-bob",
+      "display": "Nano Banana Pro",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true,
+      "resolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "3:2",
+        "1:1",
+        "9:16",
+        "3:4",
+        "2:3",
+        "5:4",
+        "4:5"
+      ],
+      "extra": {
+        "resolution": "1K"
+      }
+    },
+    "recraft-v3": {
+      "generator": "recraft/recraft-v3",
+      "display": "Recraft V3",
+      "type": "image",
+      "image_field": "image",
+      "single_image": true,
+      "supports_edit": true
+    },
+    "seededit-3.0": {
+      "generator": "seededit/seededit-3-0",
+      "display": "Seededit",
+      "type": "image",
+      "image_field": "image",
+      "single_image": true,
+      "supports_edit": true
+    },
+    "seedream-4.0": {
+      "generator": "seedream/seedream-4-0",
+      "display": "Seedream 4",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true
+    },
+    "seedream-4.5": {
+      "generator": "seedream/seedream-4-5",
+      "display": "Seedream 4.5",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true
+    }
+  }
+}
