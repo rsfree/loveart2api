@@ -207,7 +207,9 @@ docker run -d --name lovart2api -p 7864:7864 \
 
 - 后台每 6 小时扫一遍，剩余不足 2 天才真正刷新（刷太勤没必要，每次刷新都消耗一次轮换机会）
 - 刷新成功会把新 accessToken + 新 refreshToken 一起写回状态文件
-- 面板可手动刷：`POST /panel/api/accounts/{id}/refresh`、`POST /panel/api/accounts/refresh`
+- 面板可手动刷：每行「续期」按钮 / 顶部「全部续期」；API 同 `POST /panel/api/accounts/{id}/refresh`
+- 🔴 **手动刷新有 1 小时冷却**：上游 WAF 对 refresh 做频控，实测 30 分钟内连刷 3 次就被
+  `405 Sorry, your request has been blocked`。冷却期内请求直接返回 `refresh_too_soon`
 - 账号按 **userId**（JWT 里的 `userId`）收敛，不会因为 token 轮换而"越刷越多号"
 
 🔴 要续期**必须有 refreshToken**。只有 accessToken 的号 7 天后必然失效，只能重新登录。

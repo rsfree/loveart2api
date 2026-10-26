@@ -121,6 +121,7 @@
           <textarea id="bulkTokens" rows="5" placeholder="usertoken 1&#10;usertoken 2&#10;…"></textarea>
           <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
             <button class="primary" onclick="bulkAdd()">批量导入</button>
+            <button onclick="renewAll(this)">全部续期</button>
             <span class="sub" id="bulkHint">并发 4 路校验，每个号会顺带探测 project_id</span>
           </div>
           <div id="bulkMsg"></div>
@@ -220,6 +221,7 @@ async function refreshAccounts() {
       <td class="nowrap">
         ${cooling ? `<button onclick="toggle('${a.id}', true)">解除冷却</button>` : `<button onclick="toggle('${a.id}', ${!a.enabled})">${a.enabled ? '停用' : '启用'}</button>`}
         <button onclick="probe('${a.id}')">测试</button>
+        ${a.has_refresh ? `<button onclick="refreshAcct('${a.id}', this)">续期</button>` : '<button disabled title="没有 refreshToken，需重新登录">续期</button>'}
         <button class="danger" onclick="del('${a.id}')">删除</button>
       </td>
     </tr>`;
@@ -286,6 +288,46 @@ async function bulkAdd() {
   } catch (e) {
     box.innerHTML = `<div class="err">${e.message}</div>`;
   }
+}
+
+async function refreshAcct(id, btn) {
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '刷新中…'; }
+  try {
+    const r = await api('/panel/api/accounts/' + id + '/refresh', { method: 'POST' });
+    if (btn) { btn.textContent = '已续期'; }
+    setTimeout(() => { renewRestore(btn, old); }, 1500);
+    refreshAll();
+    return r;
+  } catch (e) {
+    if (btn) { btn.textContent = '失败'; }
+    alert('续期失败：' + e.message);
+    setTimeout(() => { renewRestore(btn, old); }, 2000);
+  }
+}
+
+function renewRestore(btn, text) {
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = text || '续期';
+}
+
+async function renewAll(btn) {
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '刷新中…'; }
+  try {
+    const r = await api('/panel/api/accounts/refresh', { method: 'POST' });
+    if (btn) btn.textContent = `成功 ${r.refreshed} / 失败 ${r.failed}`;
+    if ((r.results || []).some(x => !x.ok)) {
+      const bad = r.results.filter(x => !x.ok).map(x => `${x.id}: ${x.error}`).join('\n');
+      alert('部分失败：\n' + bad);
+    }
+  } catch (e) {
+    if (btn) btn.textContent = '失败';
+    alert('全部续期失败：' + e.message);
+  }
+  setTimeout(() => { renewRestore(btn, old); }, 2000);
+  refreshAll();
 }
 
 async function probe(id) {

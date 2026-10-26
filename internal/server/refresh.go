@@ -19,6 +19,13 @@ const refreshScanInterval = 6 * time.Hour
 // refreshThreshold 剩余有效期低于它就续期。
 const refreshThreshold = 48 * time.Hour
 
+// refreshMinGap 两次刷新之间的最小间隔。
+//
+// 🔴 上游 WAF 会对 refresh 接口做频控：实测 30 分钟内连刷 3 次就被拦，
+// 返回 `405 Sorry, your request has been blocked...`。所以这里强制冷却，
+// 避免面板上反复点"续期"把自己点进黑名单。
+const refreshMinGap = time.Hour
+
 // StartBackground 启动后台任务（目前只有续期）。
 func (s *Server) StartBackground(ctx context.Context) {
 	go s.refreshLoop(ctx)
@@ -98,6 +105,11 @@ func (s *Server) panelRefreshAccount(w http.ResponseWriter, r *http.Request) {
 			"该账号没有 refreshToken（老数据），需要重新登录一次拿到")
 		return
 	}
+	if wait := refreshCooldownLeft(acct); wait > 0 {
+		writeErr(w, http.StatusTooManyRequests, "refresh_too_soon",
+			"刚刚刷过，上游 WAF 会拦（405）。请 "+wait.Truncate(time.Minute).String()+" 后再试")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.refreshOne(ctx, id, acct.RefreshToken); err != nil {
@@ -128,6 +140,9 @@ func (s *Server) panelRefreshAll(w http.ResponseWriter, r *http.Request) {
 		if a.RefreshToken == "" {
 			continue
 		}
+		if refreshCooldownLeft(&a) > 0 {
+			continue
+		}
 		if err := s.refreshOne(ctx, a.ID, a.RefreshToken); err != nil {
 			out = append(out, res{ID: a.ID, OK: false, Error: truncateStr(err.Error(), 120)})
 			failN++
@@ -139,6 +154,18 @@ func (s *Server) panelRefreshAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "refreshed": okN, "failed": failN, "results": out,
 	})
+}
+
+// refreshCooldownLeft 距离下次允许刷新还有多久（0 = 可以刷）。
+func refreshCooldownLeft(a *pool.Account) time.Duration {
+	if a.LastRefreshAt == 0 {
+		return 0
+	}
+	next := time.Unix(a.LastRefreshAt, 0).Add(refreshMinGap)
+	if d := time.Until(next); d > 0 {
+		return d
+	}
+	return 0
 }
 
 // humanizeUntil 把过期时间说成"还有多久"。
