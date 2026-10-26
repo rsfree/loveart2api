@@ -2,7 +2,7 @@
   <h1 align="center">lovart2api</h1>
   <p align="center">
     把 Lovart 的图像生成能力包成 <b>OpenAI 兼容 API</b> 的单二进制网关 · 附 Web 面板<br>
-    文生图 / 图生图 · 12 个模型映射 · 多账号池 · 额度感知 · 冷却与轮转 · wasm 客户端签名
+    文生图 / 图生图 · 13 个模型映射 · 多账号池 · 额度感知 · 冷却与轮转 · wasm 客户端签名
   </p>
 </p>
 
@@ -36,7 +36,7 @@ Nano Banana Pro、GPT Image、Flux 2、Seedream 等模型做文生图和图生�
 | 🖼 **文生图** | `POST /v1/images/generations`，支持 `size` / `aspect_ratio` / `resolution` / `seed` / `negative_prompt` |
 | 🎨 **图生图** | `POST /v1/images/edits`，multipart 与 JSON（base64 / data URL / http URL）双形态；`generations` 里带 `image` 也按图生图走 |
 | 🔁 **多图参考** | 一次传多张输入图（`image` 数组 / `image[]` / `image_1..9`） |
-| 🧠 **12 个模型映射** | Nano Banana Pro / GPT Image 1.5 / Flux 2 Pro·Max / Seedream 4.5·4 / Seededit / Recraft / Ideogram / Midjourney…映射表可配置 |
+| 🧠 **13 个模型映射** | Nano Banana Pro / GPT Image 2·1.5 / Flux 2 Pro·Max / Seedream 4.5·4 / Seededit / Recraft / Ideogram / Midjourney…映射表可配置 |
 | 👥 **账号池** | 按 token 哈希去重、最近最少使用轮转、失败换号重试（默认 3 次） |
 | 🚦 **额度感知** | 上游核心模型 5 次/天、并发 1/账号；本地计数 + 命中即冷却到次日 04:00，避免反复撞墙 |
 | ❄️ **分级冷却** | 额度 → **只冷却该模型**到日切（核心模型满了 flux 照用）；鉴权 → 整号禁用；并发 → 3s；参数错误 → 不冷却（是请求的问题，不是账号的问题） |
@@ -108,7 +108,7 @@ print(img.data[0].url)
 
 ## 模型映射
 
-`config.json → models` 是唯一真源，默认这 12 个（**只有标 ✅ 的是本仓库实测跑通整条链路的**）：
+`config.json → models` 是唯一真源，默认这 13 个（**只有标 ✅ 的是本仓库实测跑通整条链路的**）：
 
 | 对外模型名 | 上游 generator | 图生图 | 实测 |
 |---|---|---|---|
@@ -116,6 +116,7 @@ print(img.data[0].url)
 | `flux-2-pro` | `fal/flux-2-pro` | ✅ | ✅ 图生图 / 文生图 / base64 / 16:9 |
 | `flux-2-max` | `fal/flux-2-max` | ✅ | 待测 |
 | `seedream-4.5` / `seedream-4.0` | `seedream/seedream-4-5` / `-4-0` | ✅ | 待测 |
+| `gpt-image-2` | `openai/gpt-image-2` | ✅ | ⚠️ 上游目录/schema 未列，但网关映射已接受（灰度模型），属核心额度池 |
 | `gpt-image-1.5` / `gpt-image-1` | `openai/gpt-image-1-5` / `-1` | ✅ | 待测 |
 | `nano-banana` | `vertex/nano-banana` | ✅ | ⚠️ 上游目录有、网关报 `no API path` |
 | `seededit-3.0` | `seededit/seededit-3-0` | 单图 | 待测 |
@@ -157,6 +158,10 @@ content-type，**多带这个头就 403 SignatureDoesNotMatch**。代码里显�
 
 > 实测 `flux` 系列不占核心额度（同一个号在 `nano-banana-pro` 报额度满之后，
 > 立刻用 `flux-2-pro` 仍能出图），所以按模型隔离冷却是必须的 —— 否则一个模型满了就整号躺平。
+>
+> 反过来，**核心额度池是共享的**：`nano-banana-pro` 与 `gpt-image-2` 各自打满后都会进
+> `model_cooldown`，说明它们共用同一个「核心模型 5 次/天」配额（`nano-banana`、
+> `gpt-image-1.*` 大概率同池）。面板会把已满的模型逐个列出来。
 
 ## 部署
 

@@ -156,6 +156,16 @@ func defaultModels() map[string]ModelSpec {
 			ImageField:   "image",
 			SupportsEdit: true,
 		},
+		// GPT Image 2：上游 /generators/list 与 schemas 都还没列它，但网关的
+		// generator 映射已经接受这个名字（对照实验：无效名会立刻 no API path，
+		// 它则走到额度检查）。属于灰度/未公开模型，参数按 GPT Image 系列通用处理。
+		"gpt-image-2": {
+			Generator:    "openai/gpt-image-2",
+			Display:      "GPT Image 2",
+			Type:         "image",
+			ImageField:   "image",
+			SupportsEdit: true,
+		},
 		"gpt-image-1": {
 			Generator:    "openai/gpt-image-1",
 			Display:      "GPT Image",

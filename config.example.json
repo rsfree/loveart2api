@@ -93,6 +93,14 @@
       "single_image": false,
       "supports_edit": true
     },
+    "gpt-image-2": {
+      "generator": "openai/gpt-image-2",
+      "display": "GPT Image 2",
+      "type": "image",
+      "image_field": "image",
+      "single_image": false,
+      "supports_edit": true
+    },
     "ideogram-v3": {
       "generator": "ideogram/ideogram-v3",
       "display": "Ideogram",
