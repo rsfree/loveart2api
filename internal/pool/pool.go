@@ -36,8 +36,11 @@ type Account struct {
 
 	// —— 运行时状态（会持久化，重启后仍然生效）——
 	CooldownUntil int64  `json:"cooldown_until,omitempty"`
-	// ModelCooldown 按 generator 的冷却：核心模型当日额度满了不该带着 flux 一起躺下。
+	// ModelCooldown 按 generator 的冷却：某个非核心模型不可用时不牵连其他模型。
 	ModelCooldown map[string]int64 `json:"model_cooldown,omitempty"`
+	// CoreCooldownUntil 核心模型池的冷却。上游把 NB / GPT_IMAGE / SEEDREAM 三类
+	// 算作「核心模型」并**共用一个 5 次/天计数**，所以任一跑满就该整体停到这里重置。
+	CoreCooldownUntil int64 `json:"core_cooldown_until,omitempty"`
 	LastError     string `json:"last_error,omitempty"`
 	Fails         int    `json:"fails,omitempty"`
 	UsageDay      string `json:"usage_day,omitempty"`
@@ -58,6 +61,11 @@ func (a *Account) ModelCooling(generator string, now time.Time) bool {
 		return false
 	}
 	return a.ModelCooldown[generator] > now.Unix()
+}
+
+// CoreCooling 核心模型池是否在冷却中。
+func (a *Account) CoreCooling(now time.Time) bool {
+	return a.CoreCooldownUntil > now.Unix()
 }
 
 // QuotaExhaustedToday 本地估算的当日额度是否已满。
@@ -246,6 +254,7 @@ func (p *Pool) SetEnabled(id string, on bool) error {
 				a.UsageDay = ""
 				a.UsageCount = 0
 				a.ModelCooldown = nil
+				a.CoreCooldownUntil = 0
 			}
 			return p.save()
 		}
@@ -318,20 +327,21 @@ type Lease struct {
 	pool    *Pool
 	// generator 本次请求用的上游模型，用于按模型隔离冷却。
 	generator string
+	isCore    bool
 	once      sync.Once
 }
 
 // Release 归还账号。err 决定是否冷却。
 func (l *Lease) Release(err error) {
 	l.once.Do(func() {
-		l.pool.report(l.Account.ID, l.generator, err)
+		l.pool.report(l.Account.ID, l.generator, l.isCore, err)
 	})
 }
 
 // Pick 按「最近最少使用」选一个可用账号，并占用其并发槽位。
 //
 // exclude 用于重试时排除刚失败的账号。
-func (p *Pool) Pick(ctx context.Context, exclude map[string]bool, generator string) (*Lease, error) {
+func (p *Pool) Pick(ctx context.Context, exclude map[string]bool, generator string, isCore bool) (*Lease, error) {
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		p.mu.Lock()
@@ -339,6 +349,9 @@ func (p *Pool) Pick(ctx context.Context, exclude map[string]bool, generator stri
 		var best *Account
 		for _, a := range p.accounts {
 			if !a.Enabled || a.Cooling(now) || a.ModelCooling(generator, now) {
+				continue
+			}
+			if isCore && a.CoreCooling(now) {
 				continue
 			}
 			if exclude != nil && exclude[a.ID] {
@@ -390,7 +403,8 @@ func (p *Pool) Pick(ctx context.Context, exclude map[string]bool, generator stri
 		// 抢到槽位后重新确认账号仍可用
 		p.mu.Lock()
 		cur := p.findLocked(id)
-		if cur == nil || !cur.Enabled || cur.Cooling(time.Now()) || cur.ModelCooling(generator, time.Now()) {
+		if cur == nil || !cur.Enabled || cur.Cooling(time.Now()) ||
+			cur.ModelCooling(generator, time.Now()) || (isCore && cur.CoreCooling(time.Now())) {
 			p.mu.Unlock()
 			<-sem
 			continue
@@ -399,7 +413,7 @@ func (p *Pool) Pick(ctx context.Context, exclude map[string]bool, generator stri
 		snapshot = *cur
 		p.mu.Unlock()
 
-		return &Lease{Account: &snapshot, pool: p, generator: generator}, nil
+		return &Lease{Account: &snapshot, pool: p, generator: generator, isCore: isCore}, nil
 	}
 }
 
@@ -413,7 +427,7 @@ func (p *Pool) findLocked(id string) *Account {
 }
 
 // report 归还槽位并按结果调整账号状态。
-func (p *Pool) report(id string, generator string, err error) {
+func (p *Pool) report(id string, generator string, isCore bool, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if sem := p.sem[id]; sem != nil {
@@ -451,10 +465,12 @@ func (p *Pool) report(id string, generator string, err error) {
 	}
 	switch {
 	case kind == "quota":
-		// 额度耗尽：只冷却**这个模型**到次日 04:00（上游额度是按模型档位算的，
-		// 核心模型满了不该把 flux 一起带走）。generator 为空时退化成整号冷却。
+		// 额度耗尽：核心模型池共用 5 次计数，整池停到重置点；
+		// 非核心模型只冷却自己，不能牵连别的模型。
 		reset := nextQuotaReset(now).Unix()
-		if generator != "" {
+		if isCore {
+			a.CoreCooldownUntil = reset
+		} else if generator != "" {
 			if a.ModelCooldown == nil {
 				a.ModelCooldown = map[string]int64{}
 			}
@@ -496,9 +512,16 @@ func (p *Pool) report(id string, generator string, err error) {
 	_ = p.save()
 }
 
-// nextQuotaReset 返回下一个额度重置点（次日 04:00 本地时间）。
+// nextQuotaReset 返回下一个额度重置点。
+//
+// 实测上游返回 lovart_core_limit_reset_at 对应**次日 08:00（Asia/Shanghai）**，
+// 时区字段 lovart_core_limit_timezone 也是 Asia/Shanghai。
 func nextQuotaReset(now time.Time) time.Time {
-	reset := time.Date(now.Year(), now.Month(), now.Day(), 4, 0, 0, 0, now.Location())
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err == nil {
+		now = now.In(loc)
+	}
+	reset := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, now.Location())
 	if !now.Before(reset) {
 		reset = reset.Add(24 * time.Hour)
 	}

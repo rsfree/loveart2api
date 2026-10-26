@@ -159,9 +159,16 @@ content-type，**多带这个头就 403 SignatureDoesNotMatch**。代码里显�
 > 实测 `flux` 系列不占核心额度（同一个号在 `nano-banana-pro` 报额度满之后，
 > 立刻用 `flux-2-pro` 仍能出图），所以按模型隔离冷却是必须的 —— 否则一个模型满了就整号躺平。
 >
-> 反过来，**核心额度池是共享的**：`nano-banana-pro` 与 `gpt-image-2` 各自打满后都会进
-> `model_cooldown`，说明它们共用同一个「核心模型 5 次/天」配额（`nano-banana`、
-> `gpt-image-1.*` 大概率同池）。面板会把已满的模型逐个列出来。
+> **核心额度是三类模型共用一个池**：`NB`（Nano Banana）、`GPT_IMAGE`（GPT Image 系列）、
+> `SEEDREAM`（Seedream 系列）合计 **5 次/天**，任一跑满其余全部不可用（三者返回的
+> `current_generated_count` 同时为 5 可证）。重置点是**次日 08:00 Asia/Shanghai**。
+>
+> 而且这 5 次**不是免费的**——每做一次照样扣积分（实测香蕉文生图 24 分、图生图 7 分），
+> 积分再充裕也突破不了这个上限。**不受限**的模型：flux-2-pro/max、recraft-v3、
+> ideogram-v3、midjourney（只受积分约束）。
+>
+> 代码里给这些模型打了 `core: true`，跑满后整个核心池进 `core_cooldown`，
+> 后续核心请求在本地直接返回 429，不再白打上游。
 
 ## 部署
 

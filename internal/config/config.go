@@ -91,6 +91,9 @@ type ModelSpec struct {
 	AspectRatios []string `json:"aspect_ratios,omitempty"`
 	// Extra 固定附加到 input_args 的参数（如 resolution 默认值）。
 	Extra map[string]any `json:"extra,omitempty"`
+	// Core 是否属于「核心模型」。免费档对核心模型有 5 次/天硬配额，且这三类
+	// （NB / GPT_IMAGE / SEEDREAM）**共用同一个计数池**，任一跑满其余全部不可用。
+	Core bool `json:"core,omitempty"`
 }
 
 // Default 返回最小可用配置。
@@ -132,6 +135,7 @@ func Default() *Config {
 func defaultModels() map[string]ModelSpec {
 	return map[string]ModelSpec{
 		"nano-banana-pro": {
+			Core:         true,
 			Generator:    "vertex/anon-bob",
 			Display:      "Nano Banana Pro",
 			Type:         "image",
@@ -142,6 +146,7 @@ func defaultModels() map[string]ModelSpec {
 			Extra:        map[string]any{"resolution": "1K"},
 		},
 		"nano-banana": {
+			Core:         true,
 			Generator:    "vertex/nano-banana",
 			Display:      "Nano Banana",
 			Type:         "image",
@@ -150,6 +155,7 @@ func defaultModels() map[string]ModelSpec {
 			AspectRatios: []string{"21:9", "16:9", "4:3", "3:2", "1:1", "9:16", "3:4", "2:3", "5:4", "4:5"},
 		},
 		"gpt-image-1.5": {
+			Core:         true,
 			Generator:    "openai/gpt-image-1-5",
 			Display:      "GPT Image 1.5",
 			Type:         "image",
@@ -160,6 +166,7 @@ func defaultModels() map[string]ModelSpec {
 		// generator 映射已经接受这个名字（对照实验：无效名会立刻 no API path，
 		// 它则走到额度检查）。属于灰度/未公开模型，参数按 GPT Image 系列通用处理。
 		"gpt-image-2": {
+			Core:         true,
 			Generator:    "openai/gpt-image-2",
 			Display:      "GPT Image 2",
 			Type:         "image",
@@ -167,6 +174,7 @@ func defaultModels() map[string]ModelSpec {
 			SupportsEdit: true,
 		},
 		"gpt-image-1": {
+			Core:         true,
 			Generator:    "openai/gpt-image-1",
 			Display:      "GPT Image",
 			Type:         "image",
@@ -174,6 +182,7 @@ func defaultModels() map[string]ModelSpec {
 			SupportsEdit: true,
 		},
 		"seedream-4.5": {
+			Core:         true,
 			Generator:    "seedream/seedream-4-5",
 			Display:      "Seedream 4.5",
 			Type:         "image",
@@ -181,6 +190,7 @@ func defaultModels() map[string]ModelSpec {
 			SupportsEdit: true,
 		},
 		"seedream-4.0": {
+			Core:         true,
 			Generator:    "seedream/seedream-4-0",
 			Display:      "Seedream 4",
 			Type:         "image",

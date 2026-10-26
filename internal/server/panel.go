@@ -164,6 +164,7 @@ func (s *Server) panelAccounts(w http.ResponseWriter, r *http.Request) {
 			"kit_id":        a.KitID,
 			"cooldown_sec":  coolLeft,
 			"cooled_models": cooledModels,
+			"core_cooldown_sec": maxInt64(a.CoreCooldownUntil-now.Unix(), 0),
 			"last_error":    a.LastError,
 			"usage_today":   used,
 			"daily_limit":   dailyLimit,
@@ -179,6 +180,13 @@ func (s *Server) panelAccounts(w http.ResponseWriter, r *http.Request) {
 		out = append(out, row)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"accounts": out})
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func tail(s string, n int) string {

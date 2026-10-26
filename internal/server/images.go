@@ -504,8 +504,16 @@ func (s *Server) runGenerate(w http.ResponseWriter, r *http.Request, gen genRequ
 			lastErr = ctx.Err()
 			break
 		}
-		lease, err := s.Pool.Pick(ctx, exclude, spec.Generator)
+		lease, err := s.Pool.Pick(ctx, exclude, spec.Generator, spec.Core)
 		if err != nil {
+			if spec.Core && errors.Is(err, pool.ErrNoAccount) {
+				entry.Status = http.StatusTooManyRequests
+				entry.Error = "核心模型额度已满"
+				writeErr(w, http.StatusTooManyRequests, "core_quota_exhausted",
+					"核心模型（Nano Banana / GPT Image / Seedream 共用 5 次/天）今日已满，次日 08:00 重置；"+
+						"可改用 flux-2-pro / flux-2-max / recraft-v3 / ideogram-v3 / midjourney")
+				return
+			}
 			lastErr = err
 			break
 		}

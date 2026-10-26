@@ -231,3 +231,51 @@ GET /api/www/lovart/power/deductlogs?page=1&pageSize=60
 > 扣费**异步结算**：任务完成才扣，且可能把多个任务合并成一条。
 > 所以「生成前后查余额」的测法不准，必须看 `deductlogs`。
 
+## 11. 核心模型配额（免费档）
+
+`1200000409` 的返回体里带着完整配额信息，实测解码如下：
+
+```json
+"ext": {
+  "lovart_core_limit_model_series": "NB",              // 触发的模型系列
+  "lovart_core_limit_daily_limit": "5",
+  "lovart_core_limit_current_generated_count": "5",
+  "lovart_core_limit_remaining_count": "0",
+  "lovart_core_limit_reset_at": "1793059200000",       // = 次日 08:00 Asia/Shanghai
+  "lovart_core_limit_timezone": "Asia/Shanghai",
+  "lovart_core_limit_region": "CN",
+  "lovart_core_limit_location": "HK",
+  "lovart_core_limit_group": "ChinaExperiment",
+  "lovart_core_limit_group_source": "STATSIG_CN",
+  "lovart_core_limit_rollout_mode": "experiment",
+  "lovart_core_limit_error_id": "custom.bizError.lovart.coreModel.dailyLimitExceeded"
+}
+```
+
+### 11.1 哪些算核心模型（实测分类）
+
+| 判据 | 结果 |
+|---|---|
+| `model_series = NB` | `vertex/anon-bob`、`vertex/nano-banana` |
+| `model_series = GPT_IMAGE` | `openai/gpt-image-1`、`-1-5`、`-2` |
+| `model_series = SEEDREAM` | `seedream/seedream-3-0`、`-4-0`、`-4-5` |
+| **不受限**（提交即成功） | `fal/flux-2-pro`、`fal/flux-2-max`、`recraft/recraft-v3`、`ideogram/ideogram-v3`、`youchuan/midjourney` |
+
+**三个系列共用同一个 5 次计数池**：NB 跑满后，GPT_IMAGE 与 SEEDREAM 也一并不可用
+（三者 `current_generated_count` 同时为 5，而 SEEDREAM 实际只被请求过一两次）。
+
+### 11.2 两个容易误解的点
+
+1. **5 次不是「免费 5 次」**，而是「免费档每天最多只能做 5 次核心生成」的**上限**。
+   每一次照样扣积分（实测 nano-banana 文生图 24 分、图生图 7 分/次）。
+   积分够也突破不了这个上限 —— 积分和配额是两套独立限制。
+2. **重置点是次日 08:00（Asia/Shanghai）**，不是自然日零点，也不是 04:00。
+
+### 11.3 探测技巧
+
+额度已经打满时，正是**零成本分类器**：提交任意 generator，
+返回 `1200000409` 的属于核心模型，返回成功提交的属于非核心（会扣几分）。
+
+> 这是中国区 A/B 实验（`ChinaExperiment` / `STATSIG_CN`）。
+> 非中国区账号或实验组外的账号，配额规则可能不同。
+

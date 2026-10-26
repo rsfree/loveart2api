@@ -142,6 +142,9 @@ func fail(what string, err error) {
 	}
 	if ae != nil {
 		fmt.Fprintf(os.Stderr, "✗ %s: kind=%s code=%s msg=%s\n", what, ae.Kind, ae.Code, ae.Message)
+		if ae.Raw != "" {
+			fmt.Fprintf(os.Stderr, "  raw: %s\n", ae.Raw)
+		}
 	} else {
 		fmt.Fprintf(os.Stderr, "✗ %s: %v\n", what, err)
 	}

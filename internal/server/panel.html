@@ -185,10 +185,13 @@ async function refreshAccounts() {
     let st;
     if (!a.enabled) st = '<span class="tag off">已停用</span>';
     else if (a.cooldown_sec > 0) st = `<span class="tag cool">冷却 ${fmtDur(a.cooldown_sec)}</span>`;
+    else if (a.core_cooldown_sec > 0) st = `<span class="tag cool">核心额度满 ${fmtDur(a.core_cooldown_sec)}</span>`;
     else if ((a.cooled_models || []).length) st = `<span class="tag cool">部分模型冷却</span>`;
     else st = '<span class="tag ok">可用</span>';
-    const cooledTip = (a.cooled_models || []).length
-      ? `<div class="sub" style="font-size:11px" title="${a.cooled_models.join(', ')}">额度满：${a.cooled_models.map(m => m.split('/').pop()).join(',')}</div>` : '';
+    const cooledTip = a.core_cooldown_sec > 0
+      ? '<div class="sub" style="font-size:11px">NB / GPT / SEEDREAM 共 5 次</div>'
+      : ((a.cooled_models || []).length
+        ? `<div class="sub" style="font-size:11px" title="${a.cooled_models.join(', ')}">额度满：${a.cooled_models.map(m => m.split('/').pop()).join(',')}</div>` : '');
     const lim = a.daily_limit || 0;
     const usage = a.quota_hit
       ? `<span class="tag bad">${a.usage_today}/${lim} 满</span>`
