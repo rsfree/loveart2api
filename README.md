@@ -184,6 +184,27 @@ docker run -d --name lovart2api -p 7864:7864 \
   -v $PWD/data:/app/data -v $PWD/config.json:/app/config.json lovart2api
 ```
 
+### 用 GHCR 镜像部署（推荐）
+
+CI 在 push 到 main 时自动发版：打 `vX.Y.Z` tag、建 Release、推三 tag 镜像
+（`<version>` / `latest` / `sha-<short>`，三 tag digest 一致）。发版前会先在 CI 里
+跑容器冒烟（`/healthz` 200 + 无 key 请求 401），不过关不会推。
+
+```bash
+docker pull ghcr.io/rsfree/loveart2api:v0.0.1
+docker run -d --name lovart2api \
+  -p 127.0.0.1:7864:7864 \
+  -v $PWD/data:/app/data \
+  -v $PWD/config.json:/app/config.json:ro \
+  ghcr.io/rsfree/loveart2api:v0.0.1
+```
+
+两个必踩的坑：
+
+- 端口**绑回环**，公网入口统一走 nginx + 域名 —— 这是"能烧账号额度的生成出口"。
+- 容器内是 uid `10001`：挂载的 `config.json` 与 `data/` 必须 `chown 10001:10001`，
+  否则启动直接 `permission denied`。
+
 ### ⚠️ 出口必须在境外
 
 `www.lovart.ai` / `lgw.lovart.ai` / `web-static3.lovart.ai` 对中国大陆出口会 TLS RST
